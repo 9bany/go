@@ -21,7 +21,7 @@ type Once struct {
 	// The hot path is inlined at every call site.
 	// Placing done first allows more compact instructions on some architectures (amd64/386),
 	// and fewer instructions (to calculate offset) on other architectures.
-	done atomic.Uint32
+	i atomic.Uint32
 	m    Mutex
 }
 
@@ -46,31 +46,7 @@ type Once struct {
 // If f panics, Do considers it to have returned; future calls of Do return
 // without calling f.
 func (o *Once) Do(f func()) {
-	// Note: Here is an incorrect implementation of Do:
-	//
-	//	if o.done.CompareAndSwap(0, 1) {
-	//		f()
-	//	}
-	//
-	// Do guarantees that when it returns, f has finished.
-	// This implementation would not implement that guarantee:
-	// given two simultaneous calls, the winner of the cas would
-	// call f, and the second would return immediately, without
-	// waiting for the first's call to f to complete.
-	// This is why the slow path falls back to a mutex, and why
-	// the o.done.Store must be delayed until after f returns.
-
-	if o.done.Load() == 0 {
-		// Outlined slow-path to allow inlining of the fast-path.
-		o.doSlow(f)
-	}
-}
-
-func (o *Once) doSlow(f func()) {
-	o.m.Lock()
-	defer o.m.Unlock()
-	if o.done.Load() == 0 {
-		defer o.done.Store(1)
+	if o.i.CompareAndSwap(0, 1) {
 		f()
 	}
 }
